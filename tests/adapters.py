@@ -9,6 +9,14 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
+from functools import partial
+import multiprocessing
+import time
+from cs336_basics.pretokenization_example import find_chunk_boundaries
+from cs336_basics.utils import process_chunk_freqs
+from cs336_basics.BPE_tokenizer import MyBpeTokenizer
+import cs336_basics
+
 
 def run_linear(
     d_in: int,
@@ -29,7 +37,9 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    raise NotImplementedError
+    MyLinear = cs336_basics.MyLinear(d_in, d_out)
+    MyLinear.weights.data = weights
+    return MyLinear(in_features)
 
 
 def run_embedding(
@@ -51,7 +61,9 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    raise NotImplementedError
+    MyEmbedding = cs336_basics.MyEmbedding(vocab_size, d_model)
+    MyEmbedding.weights.data = weights
+    return MyEmbedding(token_ids)
 
 
 def run_swiglu(
@@ -80,10 +92,11 @@ def run_swiglu(
     # If your state dict keys match, you can use `load_state_dict()`
     # swiglu.load_state_dict(weights)
     # You can also manually assign the weights
-    # swiglu.w1.weight.data = w1_weight
-    # swiglu.w2.weight.data = w2_weight
-    # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    swiglu = cs336_basics.MySwiGLU(d_model, d_ff)
+    swiglu.weights1.data = w1_weight
+    swiglu.weights2.data = w2_weight
+    swiglu.weights3.data = w3_weight
+    return swiglu(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -200,7 +213,8 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    rope = cs336_basics.MyRoPE(theta=theta, d_k=d_k, max_seq_len=max_seq_len)
+    return rope(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
@@ -559,13 +573,14 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
+    return MyBpeTokenizer(vocab, merges, special_tokens)
 
 
 def run_train_bpe(
     input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
+    timer_enable: bool = False,
     **kwargs,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """Given the path to an input corpus, run train a BPE tokenizer and
@@ -589,4 +604,137 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    # raise NotImplementedError
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    vocab = {}
+
+    if timer_enable: start_time = time.time()
+
+    for i in range(256):
+        vocab[i] = bytes([i])
+
+    current_id = 256
+    for token in special_tokens:
+        vocab[current_id] = token.encode('utf-8')
+        current_id += 1
+
+    if timer_enable: print("vocabulary has been initialized in %.3f seconds" % (time.time() - start_time))
+
+    with open(input_path, 'rb') as f:
+        boundries = find_chunk_boundaries(f, multiprocessing.cpu_count(), '<|endoftext|>'.encode('utf-8'))
+
+        chunk_data = [(start, end, str(input_path)) for start, end in zip(boundries[:-1], boundries[1:])]
+
+        process_chunk_freqs_partial = partial(process_chunk_freqs, special_tokens=special_tokens, PAT=PAT)
+
+        with multiprocessing.Pool() as pool:
+            chunk_freqs = pool.map(process_chunk_freqs_partial, chunk_data)
+        
+        if timer_enable: print("chunk data has been processed in %.3f seconds" % (time.time() - start_time))
+
+        token_freqs = {}
+
+        for chunk_freq in chunk_freqs:
+            for token, freq in chunk_freq.items():
+                token_freqs[token] = token_freqs.get(token, 0) + freq
+
+        pair_freq = {}
+
+        find_tokens_by_pair = {}
+
+        for token, freq in token_freqs.items():
+            for i in range(len(token) - 1):
+                pair_tuple = (token[i], token[i + 1])
+                pair_freq[pair_tuple] = pair_freq.get(pair_tuple, 0) + freq
+                if pair_tuple not in find_tokens_by_pair:
+                    find_tokens_by_pair[pair_tuple] = []
+                find_tokens_by_pair[pair_tuple].append((token, freq))
+
+        merges = []
+
+        while len(vocab) < vocab_size:
+            more_merge = False
+            most_freq_pair = max(pair_freq.items(), key = lambda x:(x[1], x[0]))
+            merge_pair = most_freq_pair[0]
+            char1, char2 = merge_pair
+            merge_token = char1 + char2
+
+            merges.append(merge_pair)
+            vocab[current_id] = merge_token
+            current_id += 1
+
+            del pair_freq[merge_pair]
+
+            if merge_pair in find_tokens_by_pair:
+                for token_seq, freq in find_tokens_by_pair[merge_pair]:
+
+                    if token_seq not in token_freqs:
+                        continue
+                    new_token_seq = []
+
+                    last_was_merge = False
+
+                    i = 0
+                    while i < len(token_seq):
+                        if i + 1 < len(token_seq) and token_seq[i] == char1 and token_seq[i + 1] == char2:
+                            # Handle Left Neighbor
+                            if i > 0 and not last_was_merge:
+                                prev_token = token_seq[i - 1]
+                                old_pair = (prev_token, char1)
+                                new_pair = (prev_token, merge_token)
+                                
+                                pair_freq[new_pair] = pair_freq.get(new_pair, 0) + freq
+                                if old_pair in pair_freq:
+                                    pair_freq[old_pair] -= freq
+                                    if pair_freq[old_pair] == 0:
+                                        del pair_freq[old_pair]
+
+                            # Handle Right Neighbor
+                            next_is_merge = (i + 2 < len(token_seq) - 1 and token_seq[i + 2] == char1 and token_seq[i + 3] == char2)
+                            
+                            if next_is_merge:
+                                old_pair = (char2, token_seq[i + 2])
+                                new_pair = (merge_token, merge_token)
+                                
+                                pair_freq[new_pair] = pair_freq.get(new_pair, 0) + freq
+                                if old_pair in pair_freq:
+                                    pair_freq[old_pair] -= freq
+                                    if pair_freq[old_pair] == 0:
+                                        del pair_freq[old_pair]
+                            
+                            elif i + 2 < len(token_seq):
+                                next_token = token_seq[i + 2]
+                                old_pair = (char2, next_token)
+                                new_pair = (merge_token, next_token)
+                                
+                                pair_freq[new_pair] = pair_freq.get(new_pair, 0) + freq
+                                if old_pair in pair_freq:
+                                    pair_freq[old_pair] -= freq
+                                    if pair_freq[old_pair] == 0:
+                                        del pair_freq[old_pair]
+                            
+                            new_token_seq.append(merge_token)
+                            i += 2
+                            last_was_merge = True
+                        else:
+                            new_token_seq.append(token_seq[i])
+                            i += 1
+                            last_was_merge = False
+
+                    new_token_seq = tuple(new_token_seq)
+                    token_freqs[token_seq] -= freq
+                    if token_freqs[token_seq] == 0:
+                        del token_freqs[token_seq]
+                    token_freqs[new_token_seq] = token_freqs.get(new_token_seq, 0) + freq
+
+                    for i in range(len(new_token_seq) - 1):
+                        pair_tuple = (new_token_seq[i], new_token_seq[i + 1])
+                        if pair_tuple not in find_tokens_by_pair:
+                            find_tokens_by_pair[pair_tuple] = []
+                        find_tokens_by_pair[pair_tuple].append((new_token_seq, freq))
+                
+                del find_tokens_by_pair[merge_pair]
+
+        if timer_enable: print("merges have been processed in %.3f seconds" % (time.time() - start_time))
+
+    return vocab, merges
