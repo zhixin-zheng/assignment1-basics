@@ -13,7 +13,7 @@ class MyRMSNorm(nn.Module):
         in_dtype = x.dtype
         x = x.to(torch.float32)
 
-        rms = torch.sqrt(torch.mean(torch.sqrt(x ** 2), dim=-1, keepdim=True)+ self.eps)
+        rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True)+ self.eps)
         x = (x / rms) * self.gain
 
         return x.to(in_dtype)
