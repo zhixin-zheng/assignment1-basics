@@ -71,11 +71,11 @@ def get_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     eps = 1e-6
     clip_coef = (max_l2_norm / (total_norm + eps)).item()
-    if clip_coef >= 1.0:
-        return
-
-    for g in grads:
-        g.mul_(clip_coef)
+    if clip_coef < 1.0:
+        for g in grads:
+            g.mul_(clip_coef)
+            
+    return total_norm
 
 def get_batch(x: np.array, batch_size: int, context_length: int, device: str) -> tuple[torch.Tensor, torch.Tensor]:
     num_tokens = x.shape[0]

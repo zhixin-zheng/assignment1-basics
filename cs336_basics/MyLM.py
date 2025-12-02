@@ -46,6 +46,7 @@ class LM(nn.Module):
         if test_flops:
             B, N = in_indices.shape
             d, d_ff = self.d_model, self.d_ff
+            FLOPs = 0
             FLOPs += self.num_layers * (
                 8 * B * N * d * d + 
                 4 * B * N * N * d +

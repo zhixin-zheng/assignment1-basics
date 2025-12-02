@@ -12,3 +12,4 @@ from .MyAttention import scaled_dot_product_attention, Multihead_Self_Attention
 from .MyTransformer import Transformer
 from .MyLM import LM
 from .MySGD import AdamW
+from .BPE_tokenizer import MyBpeTokenizer
