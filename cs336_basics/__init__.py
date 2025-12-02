@@ -2,7 +2,7 @@ import importlib.metadata
 
 __version__ = importlib.metadata.version("cs336_basics")
 
-from .utils import process_chunk_freqs, softmax, cross_entropy_loss, get_lr_cosine_schedule, get_gradient_clipping, get_batch, save_checkpoint, load_checkpoint
+from .utils import process_chunk_freqs, softmax, silu, cross_entropy_loss, get_lr_cosine_schedule, get_gradient_clipping, get_batch, save_checkpoint, load_checkpoint
 from .MyRMSNorm import MyRMSNorm
 from .MyLinear import Linear
 from .MyEmbedding import MyEmbedding

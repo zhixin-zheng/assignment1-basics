@@ -39,6 +39,9 @@ def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
     exp_x = torch.exp(x - max_values)
     return exp_x / torch.sum(exp_x, dim = dim, keepdim = True)
 
+def silu(x: torch.Tensor) -> torch.Tensor:
+    return x / (1 + torch.exp(-x))
+
 def cross_entropy_loss(logits: Float[Tensor, " batch_size vocab_size"], targets: Int[Tensor, " batch_size"]) -> Float[Tensor, ""]:
     max_logits = logits.max(dim=-1, keepdim=True).values
     logits_stabilized = logits - max_logits # [batch_size, vocab_size]
