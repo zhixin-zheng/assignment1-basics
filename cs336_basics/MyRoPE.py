@@ -19,8 +19,8 @@ class MyRoPE(nn.Module):
         current_cos, current_sin = self.cos_cached[token_positions], self.sin_cached[token_positions]
 
         if x.dim() == 4:
-            current_cos = current_cos.unsqueeze(2)
-            current_sin = current_sin.unsqueeze(2)
+            current_cos = current_cos.unsqueeze(1)
+            current_sin = current_sin.unsqueeze(1)
 
         x_odd  = x[...,1::2]
         x_even = x[..., ::2]

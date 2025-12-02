@@ -13,7 +13,6 @@ from functools import partial
 import multiprocessing
 import time
 from cs336_basics.pretokenization_example import find_chunk_boundaries
-from cs336_basics.utils import process_chunk_freqs
 from cs336_basics.BPE_tokenizer import MyBpeTokenizer
 import cs336_basics
 
@@ -37,7 +36,7 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    MyLinear = cs336_basics.MyLinear(d_in, d_out)
+    MyLinear = cs336_basics.Linear(d_in, d_out)
     MyLinear.weights.data = weights
     return MyLinear(in_features)
 
@@ -117,7 +116,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return cs336_basics.scaled_dot_product_attention(Q, K, V, mask)
 
 
 def run_multihead_self_attention(
@@ -151,7 +150,12 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    Multihead_Self_Attention = cs336_basics.Multihead_Self_Attention(d_model, num_heads)
+    Multihead_Self_Attention.Wq.data = q_proj_weight
+    Multihead_Self_Attention.Wk.data = k_proj_weight
+    Multihead_Self_Attention.Wv.data = v_proj_weight
+    Multihead_Self_Attention.Wo.data = o_proj_weight
+    return Multihead_Self_Attention.forward_without_rope(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -191,7 +195,12 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    Multihead_Self_Attention = cs336_basics.Multihead_Self_Attention(d_model, num_heads)
+    Multihead_Self_Attention.Wq.data = q_proj_weight
+    Multihead_Self_Attention.Wk.data = k_proj_weight
+    Multihead_Self_Attention.Wv.data = v_proj_weight
+    Multihead_Self_Attention.Wo.data = o_proj_weight
+    return Multihead_Self_Attention(in_features, token_positions, theta)
 
 
 def run_rope(
@@ -287,7 +296,9 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    transformer = cs336_basics.Transformer(d_model, num_heads, d_ff)
+    transformer.load_weights(weights)
+    return transformer(in_features, theta=theta)
 
 
 def run_transformer_lm(
@@ -369,7 +380,9 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    lm = cs336_basics.LM(d_model, num_heads, d_ff, vocab_size, context_length, num_layers, rope_theta)
+    lm.load_weights(weights)
+    return lm(in_indices)
 
 
 def run_rmsnorm(
@@ -392,7 +405,9 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    rmsnorm = cs336_basics.MyRMSNorm(d_model, eps)
+    rmsnorm.gain.data = weights
+    return rmsnorm(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -429,7 +444,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return cs336_basics.get_batch(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -445,7 +460,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    return cs336_basics.softmax(in_features, dim)
 
 
 def run_cross_entropy(
@@ -463,7 +478,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cs336_basics.cross_entropy_loss(inputs, targets)
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
@@ -475,14 +490,14 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    return cs336_basics.get_gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return cs336_basics.AdamW
 
 
 def run_get_lr_cosine_schedule(
@@ -510,7 +525,7 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return cs336_basics.get_lr_cosine_schedule(it, min_learning_rate, max_learning_rate, warmup_iters, cosine_cycle_iters)
 
 
 def run_save_checkpoint(
@@ -529,7 +544,7 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    return cs336_basics.save_checkpoint(model, optimizer, iteration, out)
 
 
 def run_load_checkpoint(
@@ -550,7 +565,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return cs336_basics.load_checkpoint(src, model, optimizer)
 
 
 def get_tokenizer(
@@ -625,7 +640,7 @@ def run_train_bpe(
 
         chunk_data = [(start, end, str(input_path)) for start, end in zip(boundries[:-1], boundries[1:])]
 
-        process_chunk_freqs_partial = partial(process_chunk_freqs, special_tokens=special_tokens, PAT=PAT)
+        process_chunk_freqs_partial = partial(cs336_basics.process_chunk_freqs, special_tokens=special_tokens, PAT=PAT)
 
         with multiprocessing.Pool() as pool:
             chunk_freqs = pool.map(process_chunk_freqs_partial, chunk_data)
