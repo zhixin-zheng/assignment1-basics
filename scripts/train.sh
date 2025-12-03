@@ -1,0 +1,23 @@
+python cs336_basics/train.py --experiment_name train_exp \
+    --train_data_path data/TinyStoriesV2-GPT4-train_bpe_token_ids.bin \
+    --valid_data_path data/TinyStoriesV2-GPT4-valid_bpe_token_ids.bin \
+    --vocab_size 10000 \
+    --context_length 256 \
+    --d_model 512 \
+    --num_layers 4 \
+    --num_heads 16 \
+    --d_ff 1344 \
+    --rope_theta 10000 \
+    --batch_size 128 \
+    --max_iters 10000 \
+    --learning_rate 0.0003 \
+    --min_learning_rate 0.0001 \
+    --beta1 0.9 \
+    --beta2 0.95 \
+    --eps 1e-8 \
+    --warmup_iters 2000 \
+    --cosine_cycle_iters 8000 \
+    --weight_decay 0.1 \
+    --max_grad_norm 1.0 \
+    --eval_interval 100 \
+    --save_interval 2500
