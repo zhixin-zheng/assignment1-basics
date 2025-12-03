@@ -1,11 +1,7 @@
 # trains a BPE tokenizer on a given text corpus and saves the vocabulary and merges.
 
 import os
-import json
 import argparse
-import adapters
-import regex as re
-from common import gpt2_bytes_to_unicode
 from cs336_basics.BPE_tokenizer import MyBPETokenizer        
 
 if __name__ == '__main__':
