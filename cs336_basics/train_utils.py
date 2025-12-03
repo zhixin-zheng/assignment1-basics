@@ -21,6 +21,12 @@ def increment_path(path: Union[str, Path], exist_ok: bool = False) -> Path:
         n = max(indices) + 1 if indices else 2
         return path.parent / f"{path.stem}_{n}"
 
+def get_gpu_memory():
+    """获取当前 GPU 显存占用 (GB)"""
+    if torch.cuda.is_available():
+        return torch.cuda.memory_reserved() / 1024**3
+    return 0.0
+
 @dataclass
 class TrainConfig:
     """实验配置数据类"""
@@ -52,7 +58,8 @@ class TrainConfig:
     save_interval: int
     
     # 数据参数
-    data_path: str
+    train_data_path: str
+    valid_data_path: str
     split_ratio: float
     
     # 其他参数
@@ -105,7 +112,7 @@ class TrainLogger:
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(os.path.join(self.log_dir, 'train.log')),
-                logging.StreamHandler()
+                # logging.StreamHandler()
             ]
         )
         self.logger = logging.getLogger('train_logger')
@@ -158,5 +165,13 @@ class TrainLogger:
         metrics_path = os.path.join(self.log_dir, 'metrics.json')
         with open(metrics_path, 'w') as f:
             json.dump(self.metrics, f, indent=2)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.save_metrics()
+        if self.use_wandb:
+            wandb.finish()
         
         

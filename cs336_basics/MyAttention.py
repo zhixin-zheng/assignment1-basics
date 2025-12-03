@@ -3,6 +3,7 @@ import torch.nn as nn
 from einops import einsum, rearrange
 from cs336_basics.MyRoPE import MyRoPE
 from cs336_basics.utils import softmax
+from typing import Optional
 # from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 
 
@@ -20,7 +21,7 @@ def scaled_dot_product_attention(q, k, v, mask=None):
     return attention_weights @ v
 
 class Multihead_Self_Attention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, dtype=None, device=None):
+    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta: Optional[float]=None, dtype=None, device=None):
         super(Multihead_Self_Attention, self).__init__()
         assert d_model % num_heads == 0, 'd_model should be divided by number of heads.'
 
@@ -28,18 +29,23 @@ class Multihead_Self_Attention(nn.Module):
         self.num_heads = num_heads
         self.max_seq_len = max_seq_len
         self.d_head = int(d_model / num_heads)
+        self.theta = theta
+        if theta is not None:
+            self.rope = MyRoPE(theta, self.d_head, max_seq_len, device=device)
 
         self.Wq = nn.Parameter(torch.empty(d_model, d_model, dtype=dtype, device=device))
         self.Wk = nn.Parameter(torch.empty(d_model, d_model, dtype=dtype, device=device))
         self.Wv = nn.Parameter(torch.empty(d_model, d_model, dtype=dtype, device=device))
         self.Wo = nn.Parameter(torch.empty(d_model, d_model, dtype=dtype, device=device))
 
-        # nn.init.xavier_uniform_(self.Wq)
-        # nn.init.xavier_uniform_(self.Wk)
-        # nn.init.xavier_uniform_(self.Wv)
-        # nn.init.xavier_uniform_(self.Wo)
+        nn.init.xavier_uniform_(self.Wq)
+        nn.init.xavier_uniform_(self.Wk)
+        nn.init.xavier_uniform_(self.Wv)
+        nn.init.xavier_uniform_(self.Wo)
 
-    def forward(self, x: torch.Tensor, token_positions=None, theta: float=10000.0) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, token_positions=None) -> torch.Tensor:
+        if self.theta is None:
+            return self.forward_without_rope(x)
         B, N, _ = x.shape
 
         q = einsum(x, self.Wq, '... i, j i -> ... j')
@@ -59,9 +65,8 @@ class Multihead_Self_Attention(nn.Module):
         if token_positions.dim() == 1:
             token_positions = token_positions[None,:]
         
-        rope = MyRoPE(theta, self.d_head, max(N, self.max_seq_len))
-        q = rope.forward(q, token_positions)
-        k = rope.forward(k, token_positions)
+        q = self.rope.forward(q, token_positions)
+        k = self.rope.forward(k, token_positions)
 
         attention_output = scaled_dot_product_attention(q, k, v, attention_mask)
 

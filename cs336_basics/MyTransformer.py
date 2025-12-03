@@ -6,11 +6,11 @@ from cs336_basics.MyRMSNorm import MyRMSNorm
 
 
 class Transformer(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, max_seq_len):
+    def __init__(self, d_model, num_heads, d_ff, max_seq_len, rope_theta: float = 10000.0):
         super(Transformer, self).__init__()
         
         self.ln1 = MyRMSNorm(d_model)
-        self.attn = Multihead_Self_Attention(d_model, num_heads, max_seq_len)
+        self.attn = Multihead_Self_Attention(d_model, num_heads, max_seq_len, rope_theta)
         self.ln2 = MyRMSNorm(d_model)
         self.ffn = MySwiGLU(d_model, d_ff)
 
@@ -25,9 +25,9 @@ class Transformer(nn.Module):
         self.ffn.weights3.data = weights['ffn.w3.weight']
         self.ln2.gain.data     = weights['ln2.weight']
 
-    def forward(self, x: torch.Tensor, token_positions = None, theta: float = 10000.0) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, token_positions = None) -> torch.Tensor:
 
-        x = x + self.attn(self.ln1(x), token_positions, theta)
+        x = x + self.attn(self.ln1(x), token_positions)
 
         x = x + self.ffn(self.ln2(x))
         return x

@@ -19,7 +19,7 @@ class LM(nn.Module):
         self.theta = theta
         self.token_embeddings = MyEmbedding(vocab_size, d_model)
         self.transformer_blocks = nn.ModuleList(
-            [Transformer(d_model, num_heads, d_ff, context_length) for i in range(num_layers)]
+            [Transformer(d_model, num_heads, d_ff, context_length, rope_theta=theta) for i in range(num_layers)]
         )
         self.ln_final = MyRMSNorm(d_model)
         self.lm_head = Linear(d_model, vocab_size)
@@ -56,7 +56,7 @@ class LM(nn.Module):
             
         features = self.token_embeddings(in_indices)
         for transformer_block in self.transformer_blocks:
-            features = transformer_block(features, theta=self.theta)
+            features = transformer_block(features)
         features = self.lm_head(self.ln_final(features))
 
         return features

@@ -11,6 +11,10 @@ class MySwiGLU(nn.Module):
         self.weights2 = nn.Parameter(torch.empty(self.d_model, self.d_ff, dtype=dtype, device=device))
         self.weights3 = nn.Parameter(torch.empty(self.d_ff, self.d_model, dtype=dtype, device=device))
 
+        nn.init.xavier_uniform_(self.weights1)
+        nn.init.xavier_uniform_(self.weights2)
+        nn.init.xavier_uniform_(self.weights3)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         gate = einsum(x, self.weights1, '... d_model, d_ff d_model -> ... d_ff')
         silu = gate * torch.sigmoid(gate)
