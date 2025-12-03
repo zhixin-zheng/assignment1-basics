@@ -13,7 +13,6 @@ from functools import partial
 import multiprocessing
 import time
 from cs336_basics.pretokenization_example import find_chunk_boundaries
-from cs336_basics.BPE_tokenizer import MyBpeTokenizer
 import cs336_basics
 
 
@@ -588,7 +587,7 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    return MyBpeTokenizer(vocab, merges, special_tokens)
+    return cs336_basics.MyBPETokenizer(vocab, merges, special_tokens)
 
 
 def run_train_bpe(
@@ -657,7 +656,8 @@ def run_train_bpe(
 
         find_tokens_by_pair = {}
 
-        for token, freq in token_freqs.items():
+        from tqdm import tqdm
+        for token, freq in tqdm(token_freqs.items(), desc="Calculating pair frequencies"):
             for i in range(len(token) - 1):
                 pair_tuple = (token[i], token[i + 1])
                 pair_freq[pair_tuple] = pair_freq.get(pair_tuple, 0) + freq
@@ -667,9 +667,33 @@ def run_train_bpe(
 
         merges = []
 
+        import heapq
+        class MaxHeapItem:
+            def __init__(self, pair, freq):
+                self.pair = pair
+                self.freq = freq
+            def __lt__(self, other):
+                # 我们希望 (频率高, 字典序大) 的元素排在堆顶
+                # heapq 是小顶堆，所以如果 self 比 other "更优"，则 self < other 应该返回 True
+                if self.freq != other.freq:
+                    return self.freq > other.freq
+                return self.pair > other.pair
+
+        # 初始化堆
+        heap = [MaxHeapItem(pair, freq) for pair, freq in pair_freq.items()]
+        heapq.heapify(heap)
+
+        pbar = tqdm(total=vocab_size - len(vocab), desc="Merging BPE tokens")
         while len(vocab) < vocab_size:
-            more_merge = False
-            most_freq_pair = max(pair_freq.items(), key = lambda x:(x[1], x[0]))
+            if not heap:
+                break
+            
+            # 1. 从堆中取出频率最高的词对 (Lazy Pop)
+            item = heapq.heappop(heap)
+            if pair_freq.get(item.pair, -1) != item.freq:
+                continue # 这是一个过期的记录，跳过
+
+            most_freq_pair = (item.pair, item.freq)
             merge_pair = most_freq_pair[0]
             char1, char2 = merge_pair
             merge_token = char1 + char2
@@ -679,6 +703,9 @@ def run_train_bpe(
             current_id += 1
 
             del pair_freq[merge_pair]
+
+            # 用于记录本轮循环中受影响的词对，以便稍后批量更新堆
+            affected_pairs = set()
 
             if merge_pair in find_tokens_by_pair:
                 for token_seq, freq in find_tokens_by_pair[merge_pair]:
@@ -699,10 +726,14 @@ def run_train_bpe(
                                 new_pair = (prev_token, merge_token)
                                 
                                 pair_freq[new_pair] = pair_freq.get(new_pair, 0) + freq
+                                affected_pairs.add(new_pair)
+
                                 if old_pair in pair_freq:
                                     pair_freq[old_pair] -= freq
+                                    affected_pairs.add(old_pair)
                                     if pair_freq[old_pair] == 0:
                                         del pair_freq[old_pair]
+                                        affected_pairs.discard(old_pair)
 
                             # Handle Right Neighbor
                             next_is_merge = (i + 2 < len(token_seq) - 1 and token_seq[i + 2] == char1 and token_seq[i + 3] == char2)
@@ -712,10 +743,14 @@ def run_train_bpe(
                                 new_pair = (merge_token, merge_token)
                                 
                                 pair_freq[new_pair] = pair_freq.get(new_pair, 0) + freq
+                                affected_pairs.add(new_pair)
+
                                 if old_pair in pair_freq:
                                     pair_freq[old_pair] -= freq
+                                    affected_pairs.add(old_pair)
                                     if pair_freq[old_pair] == 0:
                                         del pair_freq[old_pair]
+                                        affected_pairs.discard(old_pair)
                             
                             elif i + 2 < len(token_seq):
                                 next_token = token_seq[i + 2]
@@ -723,10 +758,14 @@ def run_train_bpe(
                                 new_pair = (merge_token, next_token)
                                 
                                 pair_freq[new_pair] = pair_freq.get(new_pair, 0) + freq
+                                affected_pairs.add(new_pair)
+
                                 if old_pair in pair_freq:
                                     pair_freq[old_pair] -= freq
+                                    affected_pairs.add(old_pair)
                                     if pair_freq[old_pair] == 0:
                                         del pair_freq[old_pair]
+                                        affected_pairs.discard(old_pair)
                             
                             new_token_seq.append(merge_token)
                             i += 2
@@ -749,6 +788,14 @@ def run_train_bpe(
                         find_tokens_by_pair[pair_tuple].append((new_token_seq, freq))
                 
                 del find_tokens_by_pair[merge_pair]
+            
+            # 批量更新堆
+            for p in affected_pairs:
+                if p in pair_freq:
+                    heapq.heappush(heap, MaxHeapItem(p, pair_freq[p]))
+
+            pbar.update(1)
+        pbar.close()
 
         if timer_enable: print("merges have been processed in %.3f seconds" % (time.time() - start_time))
 
